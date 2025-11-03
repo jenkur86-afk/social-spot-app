@@ -133,9 +133,6 @@ export default function MapScreen({ navigation }) {
       await Promise.all([
         AsyncStorage.setItem(STORAGE_KEYS.MAP_CATEGORY, selectedCategory),
         AsyncStorage.setItem(STORAGE_KEYS.MAP_FREE_ONLY, showFreeOnly.toString()),
-        globalLocation 
-          ? AsyncStorage.setItem(STORAGE_KEYS.MAP_LOCATION, JSON.stringify(globalLocation))
-          : AsyncStorage.removeItem(STORAGE_KEYS.MAP_LOCATION),
         AsyncStorage.setItem(STORAGE_KEYS.MAP_REGION, JSON.stringify(region))
       ]);
       
@@ -251,10 +248,7 @@ export default function MapScreen({ navigation }) {
     setSelectedCategory('All');
     setShowFreeOnly(false);
     setShowSearchModal(false);
-    
-    // Clear saved location but keep other preferences
-    await AsyncStorage.removeItem(STORAGE_KEYS.MAP_LOCATION);
-    console.log('🧹 Filters cleared');
+  
   }
 
   // Show loading while preferences are being loaded
