@@ -1,134 +1,77 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  FlatList, 
-  StyleSheet, 
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
   ActivityIndicator,
   RefreshControl,
   TouchableOpacity,
-  ScrollView
+  Platform,
+  InteractionManager
 } from 'react-native';
-import { collection, getDocs, query, where, limit } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 import ActivityCard from '../components/ActivityCard';
+import EventFilterBar from '../components/EventFilterBar';
 import AgeFilter from '../components/AgeFilter';
 import LocationSearch from '../components/LocationSearch';
-import { getCoordinatesFromZip, calculateDistance } from '../utils/geocoding';
+import { calculateDistance } from '../utils/geocoding';
 import { useLocation } from '../contexts/LocationContext';
-import { Ionicons } from '@expo/vector-icons';
+import MapModal from '../components/MapModal';
+import { Colors } from '../utils/colors';
+
+const CATEGORY_MAPPING = {
+  'Food & Dining': 'Food & Dining',
+  'Outdoor': 'Outdoor Fun',
+  'Indoor': 'Indoor Fun',
+  'Educational & Enrichment': 'Arts, Culture & Learning',
+  'Events & Programs': 'Events & Programs'
+};
 
 export default function EventsScreen({ navigation }) {
   const [allEvents, setAllEvents] = useState([]);
   const [filteredEvents, setFilteredEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const { globalLocation, updateLocation } = useLocation();
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [isMapVisible, setIsMapVisible] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [showFreeOnly, setShowFreeOnly] = useState(false);
   const [selectedAge, setSelectedAge] = useState('all');
-  const [dateFilter, setDateFilter] = useState('all'); // Changed default from 'upcoming' to 'all'
-  const [showPastEvents, setShowPastEvents] = useState(false);
+
+  const { globalLocation, updateLocation } = useLocation();
+  const flatListRef = useRef(null);
 
   useEffect(() => {
-    loadEvents();
+    loadAllEvents();
   }, []);
 
   useEffect(() => {
     applyFilters();
-  }, [globalLocation, selectedAge, allEvents, dateFilter, showPastEvents]);
+  }, [selectedCategory, showFreeOnly, selectedAge, globalLocation, allEvents]);
 
-  // Parse event dates to Date objects
-  function parseEventDate(event) {
-    // Try to parse from eventDate or scheduleDescription
-    const dateStr = event.eventDate || event.eventStartDate || '';
-    const scheduleStr = event.scheduleDescription || '';
-    
-    // Common date patterns
-    const patterns = [
-      /(\d{1,2})\/(\d{1,2})\/(\d{4})/,  // 12/7/2024
-      /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2}),?\s+(\d{4})/i,  // Dec 7, 2024
-      /(\d{4})-(\d{2})-(\d{2})/  // 2024-12-07
-    ];
-    
-    // Try eventDate first
-    if (dateStr) {
-      for (const pattern of patterns) {
-        const match = dateStr.match(pattern);
-        if (match) {
-          if (pattern.source.includes('Jan|Feb')) {
-            // Month name format
-            const monthMap = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, 
-                              Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
-            const monthName = match[1].substring(0, 3);
-            return new Date(match[3], monthMap[monthName], match[2]);
-          } else if (match[0].includes('-')) {
-            // ISO format
-            return new Date(match[1], match[2] - 1, match[3]);
-          } else {
-            // MM/DD/YYYY format
-            return new Date(match[3], match[1] - 1, match[2]);
-          }
-        }
-      }
-    }
-    
-    // Try scheduleDescription
-    if (scheduleStr) {
-      for (const pattern of patterns) {
-        const match = scheduleStr.match(pattern);
-        if (match) {
-          if (pattern.source.includes('Jan|Feb')) {
-            const monthMap = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
-                              Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
-            const monthName = match[1].substring(0, 3);
-            return new Date(match[3], monthMap[monthName], match[2]);
-          } else if (match[0].includes('-')) {
-            return new Date(match[1], match[2] - 1, match[3]);
-          } else {
-            return new Date(match[3], match[1] - 1, match[2]);
-          }
-        }
-      }
-    }
-    
-    // REMOVED: Don't force recurring events to today's date
-    // Let them be null and handle them in the filter logic
-    
-    return null;
-  }
-
-  async function loadEvents() {
+  async function loadAllEvents() {
     try {
+      console.log('ðŸ“… Loading events...');
       const eventsRef = collection(db, 'events');
-      const q = query(
-        eventsRef,
-        where('parentCategory', '==', 'Events & Programs'),
-        limit(3000)
-      );
+      const q = query(eventsRef, orderBy('name'), limit(1000));
       const snapshot = await getDocs(q);
       
-      let eventsData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      
-      // Add parsed dates to events
-      eventsData = eventsData.map(event => ({
-        ...event,
-        parsedDate: parseEventDate(event)
-      }));
-      
-      // Sort by date (earliest first, but put null dates at end)
-      eventsData.sort((a, b) => {
-        if (!a.parsedDate && !b.parsedDate) return 0;
-        if (!a.parsedDate) return 1;
-        if (!b.parsedDate) return -1;
-        return a.parsedDate - b.parsedDate;
+      const eventsData = snapshot.docs.map(doc => {
+        const data = doc.data();
+        const displayCategory = CATEGORY_MAPPING[data.parentCategory] || data.parentCategory;
+        
+        return {
+          id: doc.id,
+          ...data,
+          displayCategory
+        };
       });
       
-      console.log(`Loaded ${eventsData.length} events`);
-      
+      console.log(`âœ… Loaded ${eventsData.length} events`);
       setAllEvents(eventsData);
-      setFilteredEvents(eventsData);
       setLoading(false);
     } catch (error) {
       console.error('Error loading events:', error);
@@ -136,143 +79,41 @@ export default function EventsScreen({ navigation }) {
     }
   }
 
-  function matchesDateFilter(event) {
-    const eventDate = event.parsedDate;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    // Apply date filter
-    switch (dateFilter) {
-      case 'today':
-        // For "Today" filter, be very strict
-        
-        // If it has a specific date
-        if (eventDate) {
-          const eventDateOnly = new Date(eventDate);
-          eventDateOnly.setHours(0, 0, 0, 0);
-          // Must be exactly today
-          return eventDateOnly.getTime() === today.getTime();
-        }
-
-        // Check for recurring patterns
-        const scheduleStr = (event.scheduleDescription || '').toLowerCase();
-        const schedule = (event.schedule || '').toLowerCase();
-        const fullText = scheduleStr + ' ' + schedule;
-
-        // Check for date ranges (June-August) - DON'T show on "today"
-        const rangeMatch = fullText.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s*-\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i);
-        if (rangeMatch) {
-          return false; // Date ranges don't belong on "today" filter
-        }
-
-        // Check for daily recurring
-        if (fullText.includes('daily') || fullText.includes('every day') || fullText.includes('everyday')) {
-          return true;
-        }
-
-        // Check for weekly events - must match today's day
-        const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-        const todayDayOfWeek = today.getDay();
-        
-        for (let i = 0; i < days.length; i++) {
-          if (fullText.includes(days[i])) {
-            return i === todayDayOfWeek; // Only show if day matches
-          }
-        }
-
-        // No date info - don't show on "today" filter
-        return false;
-      
-      case 'tomorrow':
-        if (!eventDate) return false;
-        const tomorrowStart = new Date(today);
-        tomorrowStart.setDate(tomorrowStart.getDate() + 1);
-        tomorrowStart.setHours(0, 0, 0, 0);
-        const dayAfter = new Date(today);
-        dayAfter.setDate(dayAfter.getDate() + 2);
-        dayAfter.setHours(0, 0, 0, 0);
-        return eventDate >= tomorrowStart && eventDate < dayAfter;
-        
-      case 'week':
-        // Show events with dates in the next 7 days OR recurring events
-        if (eventDate) {
-          const nextWeek = new Date(today);
-          nextWeek.setDate(nextWeek.getDate() + 7);
-          return eventDate >= today && eventDate < nextWeek;
-        }
-        // Include recurring/weekly events
-        const weekSchedule = (event.scheduleDescription || '').toLowerCase() + ' ' + (event.schedule || '').toLowerCase();
-        if (weekSchedule.includes('weekly') || weekSchedule.includes('daily') || 
-            weekSchedule.includes('monday') || weekSchedule.includes('tuesday') ||
-            weekSchedule.includes('wednesday') || weekSchedule.includes('thursday') ||
-            weekSchedule.includes('friday') || weekSchedule.includes('saturday') ||
-            weekSchedule.includes('sunday')) {
-          return true;
-        }
-        return false;
-        
-      case 'month':
-        // Show events with dates this month OR recurring events
-        if (eventDate) {
-          const nextMonth = new Date(today);
-          nextMonth.setMonth(nextMonth.getMonth() + 1);
-          return eventDate >= today && eventDate < nextMonth;
-        }
-        // Include recurring events
-        if (event.recurring || event.schedule === 'Weekly' || event.schedule === 'Daily') {
-          return true;
-        }
-        return false;
-        
-      case 'all':
-        // Show all future events and recurring events
-        if (!showPastEvents && eventDate && eventDate < today) {
-          // Exception for recurring events
-          if (!event.recurring && event.schedule !== 'Weekly' && event.schedule !== 'Daily') {
-            return false;
-          }
-        }
-        return true;
-        
-      default:
-        return true;
-    }
+  async function handleLocationSearch(searchData, radius, searchType) {
+    await updateLocation(searchData, radius, searchType);
   }
 
   function matchesAgeFilter(event) {
     if (selectedAge === 'all') return true;
     
-    const ageRange = event.ageRange || event.filters?.ageRange;
+    const ageRange = event.filters?.ageRange;
     if (!ageRange) return true;
     
     const ageLower = ageRange.toLowerCase();
     
     switch (selectedAge) {
       case 'toddler':
-        return ageLower.includes('0-3') || 
-               ageLower.includes('0-2') ||
-               ageLower.includes('toddler') || 
+        return ageLower.includes('0-3') ||
+               ageLower.includes('toddler') ||
                ageLower.includes('infant') ||
                ageLower.includes('all ages');
       
       case 'kids':
-        return ageLower.includes('4-12') || 
-               ageLower.includes('3-5') ||
-               ageLower.includes('5-12') ||
-               ageLower.includes('kids') || 
+        return ageLower.includes('4-12') ||
+               ageLower.includes('kids') ||
                ageLower.includes('children') ||
                ageLower.includes('all ages');
       
       case 'teens':
-        return ageLower.includes('13-18') || 
-               ageLower.includes('13-17') ||
-               ageLower.includes('teen') || 
+        return ageLower.includes('13-18') ||
+               ageLower.includes('teen') ||
                ageLower.includes('youth') ||
                ageLower.includes('all ages');
       
       case 'adults':
-        return ageLower.includes('18+') || 
+        return ageLower.includes('18+') ||
                ageLower.includes('adult') ||
+               ageLower.includes('21+') ||
                ageLower.includes('all ages');
       
       default:
@@ -283,32 +124,39 @@ export default function EventsScreen({ navigation }) {
   function applyFilters() {
     let filtered = [...allEvents];
     
-    // Date filter (includes hiding past events)
-    filtered = filtered.filter(e => matchesDateFilter(e));
-    
     // Location filter
     if (globalLocation) {
+      console.log(`ðŸ“ Filtering by location (${globalLocation.radius} mi radius)`);
+      
       filtered = filtered
+        .filter(event => event.location?.coordinates?.latitude)
         .map(event => {
-          const coords = event.location?.coordinates || event.coordinates;
-          
-          if (!coords) return null;
-          
-          const lat = coords.latitude || coords.lat;
-          const lon = coords.longitude || coords.lon || coords.lng;
-          
-          if (!lat || !lon) return null;
-          
           const distance = calculateDistance(
             globalLocation.latitude,
             globalLocation.longitude,
-            lat,
-            lon
+            event.location.coordinates.latitude,
+            event.location.coordinates.longitude
           );
           
-          return { ...event, distance };
+          return {
+            ...event,
+            distance
+          };
         })
-        .filter(event => event && event.distance <= globalLocation.radius);
+        .filter(event => event.distance <= globalLocation.radius)
+        .sort((a, b) => a.distance - b.distance);
+      
+      console.log(`âœ… Found ${filtered.length} events within ${globalLocation.radius} mi`);
+    }
+    
+    // Category filter
+    if (selectedCategory !== 'All') {
+      filtered = filtered.filter(e => e.displayCategory === selectedCategory);
+    }
+    
+    // Free filter
+    if (showFreeOnly) {
+      filtered = filtered.filter(e => e.filters?.isFree === true);
     }
     
     // Age filter
@@ -316,33 +164,17 @@ export default function EventsScreen({ navigation }) {
       filtered = filtered.filter(e => matchesAgeFilter(e));
     }
     
-    // Sort by date (already sorted in loadEvents, but re-sort after filtering)
-    filtered.sort((a, b) => {
-      // Put recurring events first if today
-      if (dateFilter === 'today') {
-        const aIsRecurring = !a.parsedDate;
-        const bIsRecurring = !b.parsedDate;
-        if (aIsRecurring && !bIsRecurring) return -1;
-        if (!aIsRecurring && bIsRecurring) return 1;
-      }
-      
-      // Sort by date
-      if (!a.parsedDate && !b.parsedDate) return 0;
-      if (!a.parsedDate) return 1;
-      if (!b.parsedDate) return -1;
-      return a.parsedDate - b.parsedDate;
-    });
+    // Sort by name if no location filter
+    if (!globalLocation) {
+      filtered.sort((a, b) => a.name.localeCompare(b.name));
+    }
     
     setFilteredEvents(filtered);
   }
 
-  async function handleLocationSearch(searchData, radius, searchType) {
-    await updateLocation(searchData, radius, searchType);
-  }
-
   async function onRefresh() {
     setRefreshing(true);
-    await loadEvents();
+    await loadAllEvents();
     setRefreshing(false);
   }
 
@@ -350,22 +182,21 @@ export default function EventsScreen({ navigation }) {
     navigation.navigate('ActivityDetail', { activity: event });
   }
 
-  const DateFilterButton = ({ label, value, icon }) => (
-    <TouchableOpacity
-      style={[styles.dateFilterBtn, dateFilter === value && styles.dateFilterBtnActive]}
-      onPress={() => setDateFilter(value)}
-    >
-      {icon && <Ionicons name={icon} size={16} color={dateFilter === value ? '#FFF' : '#666'} />}
-      <Text style={[styles.dateFilterText, dateFilter === value && styles.dateFilterTextActive]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
+  // Handle map button press with scroll prevention
+  function handleMapPress() {
+    if (flatListRef.current) {
+      flatListRef.current.scrollToOffset({ offset: 0, animated: false });
+    }
+    
+    InteractionManager.runAfterInteractions(() => {
+      setIsMapVisible(true);
+    });
+  }
 
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#4CAF50" />
+        <ActivityIndicator size="large" color={Colors.secondary} />
         <Text style={styles.loadingText}>Loading events...</Text>
       </View>
     );
@@ -374,73 +205,87 @@ export default function EventsScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>📅 Events & Programs</Text>
-        <Text style={styles.subtitle}>
-          {filteredEvents.length} events
-          {globalLocation && ` within ${globalLocation.radius} mi of ${globalLocation.zipCode}`}
-          {!showPastEvents && ' (hiding past events)'}
-        </Text>
+        <Text style={styles.headerTitle}>ðŸ“… Events</Text>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={styles.filterToggleButton}
+            onPress={() => setShowFilters(!showFilters)}
+          >
+            <Text style={styles.filterToggleIcon}>{showFilters ? 'ðŸ”¼' : 'ðŸ”½'}</Text>
+            <Text style={styles.filterToggleText}>Filters</Text>
+            {(selectedCategory !== 'All' || showFreeOnly || selectedAge !== 'all' || globalLocation) && (
+              <View style={styles.activeFilterDot} />
+            )}
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.mapButton}
+            onPress={handleMapPress}
+          >
+            <Text style={styles.mapButtonIcon}>ðŸ—ºï¸</Text>
+            <Text style={styles.mapButtonText}>Map</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-
-      <LocationSearch 
-        onSearch={handleLocationSearch}
-        loading={false}
-      />
-
-      {/* Date Filter - Removed Upcoming, Added Tomorrow */}
-      <View style={styles.dateFilterContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <DateFilterButton label="All" value="all" icon="infinite" />
-          <DateFilterButton label="Today" value="today" icon="today" />
-          <DateFilterButton label="Tomorrow" value="tomorrow" icon="sunny" />
-          <DateFilterButton label="This Week" value="week" icon="calendar-outline" />
-          <DateFilterButton label="This Month" value="month" icon="calendar" />
-        </ScrollView>
-      </View>
-
-      {/* Show Past Events Toggle */}
-      <TouchableOpacity
-        style={styles.pastEventsToggle}
-        onPress={() => setShowPastEvents(!showPastEvents)}
-      >
-        <Ionicons 
-          name={showPastEvents ? "checkbox" : "square-outline"} 
-          size={20} 
-          color="#4CAF50" 
-        />
-        <Text style={styles.pastEventsText}>Show past events</Text>
-      </TouchableOpacity>
-
-      <AgeFilter
-        selectedAge={selectedAge}
-        onAgeChange={setSelectedAge}
-      />
+      
+      {showFilters && (
+        <>
+          <LocationSearch
+            onSearch={handleLocationSearch}
+            loading={searchLoading}
+          />
+          
+          <EventFilterBar
+            selectedCategory={selectedCategory}
+            onCategoryChange={setSelectedCategory}
+            showFreeOnly={showFreeOnly}
+            onToggleFree={() => setShowFreeOnly(!showFreeOnly)}
+          />
+          
+          <AgeFilter
+            selectedAge={selectedAge}
+            onAgeChange={setSelectedAge}
+          />
+        </>
+      )}
       
       <FlatList
+        ref={flatListRef}
         data={filteredEvents}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <ActivityCard 
-            activity={item} 
+          <ActivityCard
+            activity={item}
             onPress={() => handleEventPress(item)}
           />
         )}
+        scrollEnabled={!isMapVisible}
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No events found</Text>
-            <Text style={styles.emptySubtext}>
-              {dateFilter === 'today' ? 'No events scheduled for today' :
-               dateFilter === 'tomorrow' ? 'No events scheduled for tomorrow' :
-               dateFilter === 'week' ? 'No events this week' :
-               dateFilter === 'month' ? 'No events this month' :
-               'Try adjusting your filters'}
-            </Text>
-          </View>
-        }
+        initialNumToRender={20}
+        maxToRenderPerBatch={20}
+        windowSize={10}
+        removeClippedSubviews={true}
+        scrollEventThrottle={1}
+        onMomentumScrollEnd={() => {}}
+        onScrollEndDrag={() => {}}
+      />
+      
+      <MapModal
+        isVisible={isMapVisible}
+        onClose={() => setIsMapVisible(false)}
+        items={filteredEvents}
+        type="events"
+        userLocation={globalLocation}
+        onItemPress={(event) => {
+          setIsMapVisible(false);
+          navigation.navigate('ActivityDetail', { activity: event });
+        }}
+        onSearchArea={(newLocation) => {
+          updateLocation(newLocation, newLocation.radius, 'map');
+        }}
       />
     </View>
   );
@@ -449,95 +294,95 @@ export default function EventsScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: Colors.background,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: Colors.background,
   },
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: '#666',
+    color: Colors.text.secondary,
+    fontWeight: '600',
   },
   header: {
-    backgroundColor: 'white',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: Colors.cardBackground,
     padding: 20,
     paddingTop: 60,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: Colors.borders.light,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.text.primary,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  filterToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8E8E8',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    position: 'relative',
+  },
+  filterToggleIcon: {
+    fontSize: 14,
+    marginRight: 4,
+  },
+  filterToggleText: {
+    color: '#333',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  activeFilterDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF5722',
+  },
+  mapButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.secondary,  // Rose/Pink for events
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  mapButtonIcon: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  mapButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#333',
+    color: Colors.text.primary,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
-    color: '#666',
+    color: Colors.text.secondary,
     lineHeight: 20,
   },
   list: {
     paddingVertical: 8,
-  },
-  dateFilterContainer: {
-    backgroundColor: 'white',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  dateFilterBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 8,
-    borderRadius: 20,
-    backgroundColor: '#f0f0f0',
-    gap: 4,
-  },
-  dateFilterBtnActive: {
-    backgroundColor: '#4CAF50',
-  },
-  dateFilterText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  dateFilterTextActive: {
-    color: 'white',
-    fontWeight: '600',
-  },
-  pastEventsToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: 'white',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-    gap: 8,
-  },
-  pastEventsText: {
-    fontSize: 14,
-    color: '#333',
-  },
-  emptyContainer: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#999',
-    textAlign: 'center',
   },
 });

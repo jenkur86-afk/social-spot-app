@@ -5,7 +5,6 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import HomeScreen from '../screens/HomeScreen';
-import MapScreen from '../screens/MapScreen';
 import EventsScreen from '../screens/EventsScreen';
 import ActivityDetailScreen from '../screens/ActivityDetailScreen';
 
@@ -13,11 +12,11 @@ const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 // Home Stack
-function HomeStack() {
+function ActivitiesStack() {
   return (
     <Stack.Navigator>
       <Stack.Screen 
-        name="HomeMain" 
+        name="ActivitiesMain" 
         component={HomeScreen}
         options={{ headerShown: false }}
       />
@@ -33,26 +32,7 @@ function HomeStack() {
   );
 }
 
-// Map Stack
-function MapStack() {
-  return (
-    <Stack.Navigator>
-      <Stack.Screen 
-        name="MapMain" 
-        component={MapScreen}
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen 
-        name="ActivityDetail" 
-        component={ActivityDetailScreen}
-        options={{ 
-          title: 'Activity Details',
-          headerBackTitle: 'Back'
-        }}
-      />
-    </Stack.Navigator>
-  );
-}
+
 
 // Events Stack
 function EventsStack() {
@@ -84,33 +64,19 @@ function TabNavigator() {
         tabBarInactiveTintColor: '#999',
         headerShown: false,
         tabBarStyle: {
-          paddingBottom: Platform.OS === 'ios' ? 25 : 8, // More padding for iOS home indicator
+          paddingBottom: Platform.OS === 'ios' ? 25 : 8,
           paddingTop: 8,
-          height: Platform.OS === 'ios' ? 85 : 60, // Taller tab bar for iOS
-        },
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
+          height: Platform.OS === 'ios' ? 85 : 65,
         },
       }}
     >
       <Tab.Screen 
-        name="Home" 
-        component={HomeStack}
+        name="Activities"
+        component={ActivitiesStack}
         options={{
-          tabBarLabel: 'Home',
+          tabBarLabel: 'Activities',
           tabBarIcon: ({ color, size }) => (
-            <Text style={{ fontSize: 24 }}>🏠</Text>
-          ),
-        }}
-      />
-      <Tab.Screen 
-        name="Map" 
-        component={MapStack}
-        options={{
-          tabBarLabel: 'Map',
-          tabBarIcon: ({ color, size }) => (
-            <Text style={{ fontSize: 24 }}>🗺️</Text>
+            <Text style={{ fontSize: 24 }}>🎉</Text>
           ),
         }}
       />

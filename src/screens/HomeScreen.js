@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   FlatList,
   StyleSheet,
   ActivityIndicator,
-  RefreshControl
+  RefreshControl,
+  TouchableOpacity,  
+  Platform,
+  InteractionManager
 } from 'react-native';
 import { collection, getDocs, query, orderBy, startAfter, limit } from 'firebase/firestore';
+import { fetchActivities } from '../services/dataService';
 import { db } from '../../firebaseConfig';
 import ActivityCard from '../components/ActivityCard';
 import FilterBar from '../components/FilterBar';
@@ -15,6 +19,9 @@ import AgeFilter from '../components/AgeFilter';
 import LocationSearch from '../components/LocationSearch';
 import { getCoordinatesFromZip, calculateDistance } from '../utils/geocoding';
 import { useLocation } from '../contexts/LocationContext';
+import MapModal from '../components/MapModal';
+import { Colors } from '../utils/colors';
+
 
 const CATEGORY_MAPPING = {
   'Food & Dining': 'Food & Dining',
@@ -30,11 +37,13 @@ export default function HomeScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
-  
+  const [isMapVisible, setIsMapVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [showFreeOnly, setShowFreeOnly] = useState(false);
   const [selectedAge, setSelectedAge] = useState('all');
+  const [showFilters, setShowFilters] = useState(true); // ADD THIS LINE
   const { globalLocation, updateLocation, clearLocation } = useLocation();
+  const flatListRef = useRef(null);
 
   useEffect(() => {
     loadAllActivities();
@@ -193,6 +202,19 @@ export default function HomeScreen({ navigation }) {
     navigation.navigate('ActivityDetail', { activity });
   }
 
+  // Handle map button press with scroll prevention
+  function handleMapPress() {
+    // Stop any ongoing scrolling momentum
+    if (flatListRef.current) {
+      flatListRef.current.scrollToOffset({ offset: 0, animated: false });
+    }
+    
+    // Use InteractionManager to ensure scroll has stopped
+    InteractionManager.runAfterInteractions(() => {
+      setIsMapVisible(true);
+    });
+  }
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -205,14 +227,33 @@ export default function HomeScreen({ navigation }) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>🎉 Discover Activities</Text>
-        <Text style={styles.subtitle}>
-          {filteredActivities.length} of {allActivities.length} activities
-          {selectedCategory !== 'All' && ` in ${selectedCategory}`}
-          {globalLocation && ` within ${globalLocation.radius} mi`}
-        </Text>
+        <Text style={styles.headerTitle}>🎉 Activities</Text>
+        <View style={styles.headerButtons}>
+          <TouchableOpacity
+            style={styles.filterToggleButton}
+            onPress={() => setShowFilters(!showFilters)}
+          >
+            <Text style={styles.filterToggleIcon}>{showFilters ? '🔼' : '🔽'}</Text>
+            <Text style={styles.filterToggleText}>Filters</Text>
+            {(selectedCategory !== 'All' || showFreeOnly || selectedAge !== 'all' || globalLocation) && (
+              <View style={styles.activeFilterDot} />
+            )}
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.mapButton}
+            onPress={handleMapPress}
+          >
+            <Text style={styles.mapButtonIcon}>🗺️</Text>
+            <Text style={styles.mapButtonText}>Map</Text>
+          </TouchableOpacity>
+        </View>
       </View>
       
+
+
+  {showFilters && (
+    <>
       <LocationSearch
         onSearch={handleLocationSearch}
         loading={searchLoading}
@@ -229,8 +270,12 @@ export default function HomeScreen({ navigation }) {
         selectedAge={selectedAge}
         onAgeChange={setSelectedAge}
       />
+    </>
+  )}
+
       
       <FlatList
+        ref={flatListRef}
         data={filteredActivities}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
@@ -239,6 +284,7 @@ export default function HomeScreen({ navigation }) {
             onPress={() => handleActivityPress(item)}
           />
         )}
+        scrollEnabled={!isMapVisible}
         contentContainerStyle={styles.list}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -246,6 +292,28 @@ export default function HomeScreen({ navigation }) {
         initialNumToRender={20}
         maxToRenderPerBatch={20}
         windowSize={10}
+        // Additional props to prevent scroll interference
+        removeClippedSubviews={true}
+        scrollEventThrottle={1}
+        // Prevent momentum when modal is about to open
+        onMomentumScrollEnd={() => {}}
+        // Ensure scroll stops when losing focus
+        onScrollEndDrag={() => {}}
+      />
+      
+      <MapModal
+        isVisible={isMapVisible}
+        onClose={() => setIsMapVisible(false)}
+        items={filteredActivities}
+        type="activities"
+        userLocation={globalLocation}
+        onItemPress={(activity) => {
+          setIsMapVisible(false);
+          navigation.navigate('ActivityDetail', { activity });
+        }}
+        onSearchArea={(newLocation) => {
+          updateLocation(newLocation, newLocation.radius, 'map');
+        }}
       />
     </View>
   );
@@ -254,36 +322,92 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: Colors.background,
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: Colors.background,
   },
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: '#666',
+    color: Colors.text.secondary,
     fontWeight: '600',
   },
   header: {
-    backgroundColor: 'white',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: Colors.cardBackground,
     padding: 20,
     paddingTop: 60,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: Colors.borders.light,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: Colors.text.primary,
+  },
+  headerButtons: {
+  flexDirection: 'row',
+  gap: 8,
+  },
+  filterToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E8E8E8',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    position: 'relative',
+  },
+  filterToggleIcon: {
+    fontSize: 14,
+    marginRight: 4,
+  },
+  filterToggleText: {
+    color: '#333',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  activeFilterDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FF5722',
+  },
+  mapButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  mapButtonIcon: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  mapButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#333',
+    color: Colors.text.primary,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
-    color: '#666',
+    color: Colors.text.secondary,
     lineHeight: 20,
   },
   list: {

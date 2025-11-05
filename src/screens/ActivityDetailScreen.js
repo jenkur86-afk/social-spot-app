@@ -97,17 +97,6 @@ export default function ActivityDetailScreen({ route, navigation }) {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#007AFF" />
-          <Text style={styles.backText}>Back</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Event Details</Text>
-      </View>
-
       <View style={styles.content}>
         <Text style={styles.title}>{activity.name}</Text>
         
@@ -146,20 +135,32 @@ export default function ActivityDetailScreen({ route, navigation }) {
         </View>
 
         {/* About Section */}
-        {activity.description && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="information-circle" size={24} color="#2196F3" />
-              <Text style={styles.sectionTitle}>About</Text>
+          {(activity.description || activity.moreInfo) && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="information-circle" size={24} color="#2196F3" />
+                <Text style={styles.sectionTitle}>About</Text>
+              </View>
+              
+              {activity.description && (
+                <Text style={styles.description}>{activity.description}</Text>
+              )}
+              
+              {activity.moreInfo && (
+                <View style={{ marginTop: activity.description ? 12 : 0 }}>
+                  <Text style={[styles.description, { fontWeight: '600', marginBottom: 4 }]}>
+                    More Info:
+                  </Text>
+                  <Text style={styles.description}>{activity.moreInfo}</Text>
+                </View>
+              )}
             </View>
-            <Text style={styles.description}>{activity.description}</Text>
-          </View>
         )}
 
         {/* Age Range Section */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.emoji}>👶</Text>
+            <Text style={styles.emoji}>ðŸ‘¶</Text>
             <Text style={styles.sectionTitle}>Age Range</Text>
           </View>
           <Text style={styles.infoText}>{getAgeDisplay()}</Text>

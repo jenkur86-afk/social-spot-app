@@ -1,33 +1,40 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 
-// Category icons mapping
-function getCategoryIcon(category) {
+// Event category icons mapping
+function getEventCategoryIcon(category) {
   const iconMap = {
-    'Food & Dining': '🍽️',
-    'Outdoor Fun': '🌳',
-    'Indoor Fun': '🎲',
-    'Arts, Culture & Learning': '🎨',
-    'Events & Programs': '🎪',
+    'Festivals & Celebrations': '🎉',
+    'Storytimes & Library': '📚',
+    'Classes & Workshops': '🎓',
+    'Arts & Culture': '🎭',
+    'Community Events': '🏘️',
+    'Indoor Activities': '🎮',
+    'Outdoor & Nature': '🌳',
+    'Animals & Wildlife': '🦁',
   };
   return iconMap[category] || '';
 }
 
-const CATEGORIES = [
+const EVENT_CATEGORIES = [
   'All',
-  'Food & Dining',
-  'Outdoor Fun',
-  'Indoor Fun',
-  'Arts, Culture & Learning'
+  'Festivals & Celebrations',
+  'Storytimes & Library',
+  'Classes & Workshops',
+  'Arts & Culture',
+  'Community Events',
+  'Indoor Activities',
+  'Outdoor & Nature',
+  'Animals & Wildlife'
 ];
 
-export default function FilterBar({ selectedCategory, onCategoryChange, showFreeOnly, onToggleFree }) {
+export default function EventFilterBar({ selectedCategory, onCategoryChange, showFreeOnly, onToggleFree }) {
   return (
     <View style={styles.container}>
-      {/* Category Filter - Wrapping */}
+      {/* Event Category Filter - Wrapping */}
       <View style={styles.categoryContainer}>
-        {CATEGORIES.map((category) => {
-          const icon = getCategoryIcon(category);
+        {EVENT_CATEGORIES.map((category) => {
+          const icon = getEventCategoryIcon(category);
           const displayText = category === 'All' ? 'All' : category;
           
           return (
@@ -85,7 +92,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   categoryButtonActive: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#FD79A8', // Rose/Pink for events
   },
   categoryText: {
     fontSize: 14,
@@ -103,7 +110,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   freeToggleActive: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: '#FD79A8', // Rose/Pink for events
   },
   freeText: {
     fontSize: 14,

@@ -1,6 +1,76 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Colors } from '../utils/colors';
+
+// Subcategory icons mapping
+function getSubcategoryIcon(subcategory) {
+  if (!subcategory) return '🎯';
+  
+  const sub = subcategory.toLowerCase();
+  
+  // Animals/Nature (check these FIRST before museum)
+  if (sub.includes('petting zoo')) return '🐐';
+  if (sub.includes('zoo')) return '🦁';
+  if (sub.includes('aquarium')) return '🐠';
+  if (sub.includes('farm')) return '🚜';
+  
+  // Parks & Outdoor
+  if (sub.includes('park')) return '🌳';
+  if (sub.includes('playground')) return '🛝';
+  if (sub.includes('trail') || sub.includes('hiking')) return '🥾';
+  if (sub.includes('beach')) return '🏖️';
+  if (sub.includes('garden')) return '🌺';
+  
+  // Food related
+  if (sub.includes('restaurant')) return '🍽️';
+  if (sub.includes('cafe') || sub.includes('coffee')) return '☕';
+  if (sub.includes('bakery')) return '🥐';
+  if (sub.includes('ice cream') || sub.includes('dessert')) return '🍦';
+  if (sub.includes('pizza')) return '🍕';
+  
+  // Indoor Fun
+  if (sub.includes('arcade') || sub.includes('gaming')) return '🎮';
+  if (sub.includes('bowling')) return '🎳';
+  if (sub.includes('trampoline')) return '🤸';
+  if (sub.includes('climbing')) return '🧗';
+  if (sub.includes('laser')) return '🔫';
+  if (sub.includes('pool') || sub.includes('swim')) return '🏊';
+  if (sub.includes('gym') || sub.includes('fitness')) return '💪';
+  if (sub.includes('dance')) return '💃';
+  if (sub.includes('martial arts') || sub.includes('karate')) return '🥋';
+  
+  // Arts & Culture (check AFTER animals/nature)
+  if (sub.includes('museum')) return '🏛️';
+  if (sub.includes('library')) return '📚';
+  if (sub.includes('theater') || sub.includes('theatre')) return '🎭';
+  if (sub.includes('music')) return '🎵';
+  if (sub.includes('art')) return '🎨';
+  if (sub.includes('pottery') || sub.includes('ceramics')) return '🏺';
+  if (sub.includes('craft')) return '✂️';
+  
+  // Sports
+  if (sub.includes('soccer')) return '⚽';
+  if (sub.includes('basketball')) return '🏀';
+  if (sub.includes('baseball')) return '⚾';
+  if (sub.includes('tennis')) return '🎾';
+  if (sub.includes('golf')) return '⛳';
+  if (sub.includes('skate')) return '🛹';
+  
+  // Events
+  if (sub.includes('festival')) return '🎪';
+  if (sub.includes('concert')) return '🎤';
+  if (sub.includes('fair')) return '🎡';
+  if (sub.includes('market')) return '🛍️';
+  
+  // Education
+  if (sub.includes('class') || sub.includes('lesson')) return '📖';
+  if (sub.includes('workshop')) return '🔨';
+  if (sub.includes('stem') || sub.includes('science')) return '🔬';
+  
+  // Default
+  return '🎯';
+}
 
 export default function ActivityCard({ activity, onPress }) {
   // Safe getter for any field that might be an object
@@ -75,7 +145,7 @@ export default function ActivityCard({ activity, onPress }) {
           <View style={styles.subcategoryRow}>
             <View style={styles.subcategoryBadge}>
               <Text style={styles.subcategoryText}>
-                🎯 {getSafeValue(activity.subcategory)}
+                {getSubcategoryIcon(activity.subcategory)} {getSafeValue(activity.subcategory)}
               </Text>
             </View>
           </View>
